@@ -2,112 +2,126 @@ from flask import Flask, render_template, request, flash, redirect
 import pickle
 import numpy as np
 from PIL import Image
-from tensorflow.keras.models import load_model
-
-
+from keras.models import load_model
+import secrets
 
 app = Flask(__name__)
+# Generate a secure random secret key
+app.secret_key = secrets.token_hex(16)  # 32-character random string
 
-def predict(values, dic):
-    if len(values) == 8:
-        model = pickle.load(open('models/diabetes.pkl','rb'))
-        values = np.asarray(values)
-        return model.predict(values.reshape(1, -1))[0]
-    elif len(values) == 26:
-        model = pickle.load(open('models/breast_cancer.pkl','rb'))
-        values = np.asarray(values)
-        return model.predict(values.reshape(1, -1))[0]
-    elif len(values) == 13:
-        model = pickle.load(open('models/heart.pkl','rb'))
-        values = np.asarray(values)
-        return model.predict(values.reshape(1, -1))[0]
-    elif len(values) == 18:
-        model = pickle.load(open('models/kidney.pkl','rb'))
-        values = np.asarray(values)
-        return model.predict(values.reshape(1, -1))[0]
-    elif len(values) == 10:
-        model = pickle.load(open('models/liver.pkl','rb'))
-        values = np.asarray(values)
-        return model.predict(values.reshape(1, -1))[0]
+def predict(values):
+    try:
+        model_map = {
+            8: "models/diabetes.pkl",
+            26: "models/breast_cancer.pkl",
+            13: "models/heart.pkl",
+            18: "models/kidney.pkl",
+            10: "models/liver.pkl",
+        }
+        if len(values) in model_map:
+            with open(model_map[len(values)], "rb") as model_file:
+                model = pickle.load(model_file)
+            values = np.asarray(values, dtype=np.float64).reshape(1, -1)
+            return model.predict(values)[0]
+        return None
+    except Exception as e:
+        return str(e)
+
 
 @app.route("/")
 def home():
-    return render_template('home.html')
+    return render_template("home.html")
 
-@app.route("/diabetes", methods=['GET', 'POST'])
+
+@app.route("/diabetes", methods=["GET", "POST"])
 def diabetesPage():
-    return render_template('diabetes.html')
+    return render_template("diabetes.html")
 
-@app.route("/cancer", methods=['GET', 'POST'])
+
+@app.route("/cancer", methods=["GET", "POST"])
 def cancerPage():
-    return render_template('breast_cancer.html')
+    return render_template("breast_cancer.html")
 
-@app.route("/heart", methods=['GET', 'POST'])
+
+@app.route("/heart", methods=["GET", "POST"])
 def heartPage():
-    return render_template('heart.html')
+    return render_template("heart.html")
 
-@app.route("/kidney", methods=['GET', 'POST'])
+
+@app.route("/kidney", methods=["GET", "POST"])
 def kidneyPage():
-    return render_template('kidney.html')
+    return render_template("kidney.html")
 
-@app.route("/liver", methods=['GET', 'POST'])
+
+@app.route("/liver", methods=["GET", "POST"])
 def liverPage():
-    return render_template('liver.html')
+    return render_template("liver.html")
 
-@app.route("/malaria", methods=['GET', 'POST'])
+
+@app.route("/malaria", methods=["GET", "POST"])
 def malariaPage():
-    return render_template('malaria.html')
+    return render_template("malaria.html")
 
-@app.route("/pneumonia", methods=['GET', 'POST'])
+
+@app.route("/pneumonia", methods=["GET", "POST"])
 def pneumoniaPage():
-    return render_template('pneumonia.html')
+    return render_template("pneumonia.html")
 
-@app.route("/predict", methods = ['POST', 'GET'])
+
+@app.route("/predict", methods=["POST", "GET"])
 def predictPage():
-    try:
-        if request.method == 'POST':
-            to_predict_dict = request.form.to_dict()
-            to_predict_list = list(map(float, list(to_predict_dict.values())))
-            pred = predict(to_predict_list, to_predict_dict)
-    except:
-        message = "Please enter valid Data"
-        return render_template("home.html", message = message)
-
-    return render_template('predict.html', pred = pred)
-
-@app.route("/malariapredict", methods = ['POST', 'GET'])
-def malariapredictPage():
-    if request.method == 'POST':
+    if request.method == "POST":
         try:
-            if 'image' in request.files:
-                img = Image.open(request.files['image'])
-                img = img.resize((36,36))
-                img = np.asarray(img)
-                img = img.reshape((1,36,36,3))
-                img = img.astype(np.float64)
+            to_predict_list = list(map(float, request.form.values()))
+            pred = predict(to_predict_list)
+            if pred is None:
+                flash("Invalid input data.", "error")
+                return redirect("/")
+        except ValueError:
+            flash("Please enter valid numerical data.", "error")
+            return redirect("/")
+    return render_template("predict.html", pred=pred)
+
+
+@app.route("/malariapredict", methods=["POST", "GET"])
+def malariapredictPage():
+    if request.method == "POST":
+        try:
+            if "image" in request.files:
+                img = Image.open(request.files["image"]).resize((36, 36))
+                img = np.asarray(img).reshape((1, 36, 36, 3)).astype(np.float64)
                 model = load_model("models/malaria.h5")
                 pred = np.argmax(model.predict(img)[0])
-        except:
-            message = "Please upload an Image"
-            return render_template('malaria.html', message = message)
-    return render_template('malaria_predict.html', pred = pred)
+            else:
+                flash("Please upload an image.", "error")
+                return redirect("/malaria")
+        except Exception as e:
+            flash(f"Error processing image: {e}", "error")
+            return redirect("/malaria")
+    return render_template("malaria_predict.html", pred=pred)
 
-@app.route("/pneumoniapredict", methods = ['POST', 'GET'])
+
+@app.route("/pneumoniapredict", methods=["POST", "GET"])
 def pneumoniapredictPage():
-    if request.method == 'POST':
+    if request.method == "POST":
         try:
-            if 'image' in request.files:
-                img = Image.open(request.files['image']).convert('L')
-                img = img.resize((36,36))
-                img = np.asarray(img)
-                img = img.reshape((1,36,36,1))
-                img = img / 255.0
+            if "image" in request.files:
+                img = (
+                    Image.open(request.files["image"])
+                    .convert("L")
+                    .resize((36, 36))
+                )
+                img = np.asarray(img).reshape((1, 36, 36, 1)) / 255.0
                 model = load_model("models/pneumonia.h5")
                 pred = np.argmax(model.predict(img)[0])
-        except:
-            message = "Please upload an Image"
-            return render_template('pneumonia.html', message = message)
-    return render_template('pneumonia_predict.html', pred = pred)
+            else:
+                flash("Please upload an image.", "error")
+                return redirect("/pneumonia")
+        except Exception as e:
+            flash(f"Error processing image: {e}", "error")
+            return redirect("/pneumonia")
+    return render_template("pneumonia_predict.html", pred=pred)
 
-if __name__ == '__main__':
-	app.run(debug = True)
+
+if __name__ == "__main__":
+    app.run(debug=True)
